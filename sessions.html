@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>세션 코어</title>
+<title>ClaudeCodeMonitor</title>
 <style>
   :root{color-scheme:dark;--working:#5ab0ff;--waiting:#ffb15a;--idle:#59627a;--error:#ff5a6a}
   html,body{margin:0;height:100%;background:#05060c;color:#dfe4f2;font:15px/1.5 -apple-system,"Pretendard","Apple SD Gothic Neo",sans-serif;overflow:hidden}
@@ -60,6 +60,14 @@
   .feed div.on{opacity:1;transform:none}
   .feed b{color:#dfe4f2;font-weight:600}
   svg.links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .board{position:absolute;left:0;right:0;top:64px;bottom:44px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.12) transparent}
+  .board .spacer{position:absolute;left:0;top:0;width:1px;pointer-events:none}
+  .ghead{position:absolute;max-width:236px;overflow:visible;display:flex;align-items:baseline;gap:10px;transition:left .7s cubic-bezier(.2,.8,.2,1),top .7s cubic-bezier(.2,.8,.2,1),opacity .4s;white-space:nowrap}
+  .ghead b{font-size:13px;font-weight:600;color:#e6eaf4;letter-spacing:.01em}
+  .ghead span{font-size:11px;color:#6f7890;font-variant-numeric:tabular-nums}
+  .ghead i{display:inline-flex;align-items:center;gap:4px;font-style:normal;font-size:11px;color:#8e97ad}
+  .ghead i::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--c)}
+  .ghead::after{content:"";position:absolute;left:0;right:0;bottom:-8px;height:1px;background:linear-gradient(90deg,rgba(255,255,255,.12),transparent)}
   .empty-note{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#6f7890;font-size:13px;letter-spacing:.12em}
   .detail{position:absolute;top:78px;bottom:60px;right:22px;width:46%;max-width:640px;border-radius:18px;padding:20px 22px;display:flex;flex-direction:column;gap:14px;opacity:0;transform:translateX(30px);pointer-events:none;transition:opacity .45s,transform .55s cubic-bezier(.2,.8,.2,1);z-index:2}
   .detail.on{opacity:1;transform:none;pointer-events:auto}
@@ -88,6 +96,7 @@
 <body>
 <div class="stage"><svg class="links" id="l1"></svg>
   <div class="hud" id="h1">
+    <div class="board" id="board"><div class="spacer" id="spacer"></div></div>
     <div class="empty-note" id="emptyNote" style="display:none">세션 없음</div>
     <div class="env glass" id="env"></div>
     <div class="summary" id="sum"></div>
@@ -116,7 +125,8 @@ const mk=(tag,attrs,parent)=>{const e=document.createElementNS(SVGNS,tag);for(co
 /* ---------- state ---------- */
 let SESS=[],TOT=null,hovId=null,hov=-1,sel=-1,selId=null,account='',serverNow=Date.now(),online=true;
 const stage=document.querySelector('.stage'),hud=document.getElementById('h1'),svg=document.getElementById('l1'),sum=document.getElementById('sum'),det=document.getElementById('det'),feed=document.getElementById('feed');
-const emptyNote=document.getElementById('emptyNote');
+const emptyNote=document.getElementById('emptyNote'),board=document.getElementById('board'),spacer=document.getElementById('spacer');
+const heads=new Map();
 const cards=new Map(),lines=new Map();
 let chipIds=new Set();
 function isChip(s){return chipIds.has(s.id);}
@@ -127,13 +137,13 @@ function paint(s){const d=cards.get(s.id);if(!d)return;const chip=isChip(s);cons
   const key=[chip,s.state,s.alive,s.name,s.now,s.project,el,fmtTok(s.tokens),Math.round(s.act*100),selId===s.id,ctxPct,tags].join('\u0001');if(d._key===key)return;d._key=key;
   d.className=(chip?'chip glass':'card glass')+(selId===s.id?' sel':'');d.style.setProperty('--c',COLH[s.state]);d.style.setProperty('--anim',s.alive===false?'none':ANIM[s.state]);d.style.setProperty('--w',Math.round(s.act*100)+'%');
   d.innerHTML=chip?`<i></i><b>${esc(s.name)}</b><span>${el}</span>`:
-   `<div class="st">${stateLabel(s)}<span>${esc(s.project)}</span></div><h4>${esc(s.name)}</h4><div class="now">${esc(s.now)}</div><div class="meta"><span>${el} 경과</span><b>${fmtTok(s.tokens)}</b></div><div class="bar"><i></i></div>
+   `<div class="st">${stateLabel(s)}</div><h4>${esc(s.name)}</h4><div class="now">${esc(s.now)}</div><div class="meta"><span>${el} 경과</span><b>${fmtTok(s.tokens)}</b></div><div class="bar"><i></i></div>
     <div class="ctx${ctxPct>=80?' hot':''}" title="컨텍스트 ${fmtTok(s.context)} / ${fmtTok(CTX_MAX)}"><span>CTX</span><div class="g"><i style="--cw:${ctxPct}%"></i></div><span>${ctxPct}%</span></div>
     <div class="tags">${tags}</div>`;}
 function summary(){const c={working:0,waiting:0,error:0,idle:0};SESS.forEach(s=>c[s.state]++);
   sum.innerHTML=['working','waiting','error','idle'].filter(k=>c[k]).map(k=>`<div class="pill glass" style="--c:${COLH[k]}"><i></i><b>${c[k]}</b> ${STN[k]}</div>`).join('');}
 function addCard(s){const d=document.createElement('div');d.className='card glass';d.style.opacity='0';
-  d.onmouseenter=()=>hovId=s.id;d.onmouseleave=()=>{if(hovId===s.id)hovId=null;};d.onclick=()=>select(selId===s.id?null:s.id);hud.appendChild(d);cards.set(s.id,d);
+  d.onmouseenter=()=>hovId=s.id;d.onmouseleave=()=>{if(hovId===s.id)hovId=null;};d.onclick=()=>select(selId===s.id?null:s.id);board.appendChild(d);cards.set(s.id,d);
 }
 function removeCard(id){if(hovId===id)hovId=null;const d=cards.get(id);if(d){d.style.opacity='0';setTimeout(()=>d.remove(),450);cards.delete(id);}const l=lines.get(id);if(l){l.remove();lines.delete(id);}if(selId===id)select(null);}
 
@@ -195,22 +205,49 @@ async function refreshDetail(id){
 window.__sel=select;
 {const el=document.getElementById('k1');const f=()=>{el.innerHTML=new Date().toLocaleTimeString('ko-KR',{hour12:false})+'  ·  '+SESS.length+' SESSIONS'+(account?'  ·  '+esc(account):'')+(online?'':'<em>연결 끊김 · 재시도 중</em>');};f();setInterval(f,500);}
 
-/* ---------- layout: 카드 격자 ---------- */
+/* ---------- layout: 프로젝트별 묶음 ---------- */
 const ORDER={working:0,waiting:1,error:2,idle:3};
-let CARD_W=236,CARD_H=108;const GAP=20;
+let CARD_W=236,CARD_H=108;const GAP=20,HEAD_H=34,GROUP_GAP=30;
 function measureCard(){for(const d of cards.values()){if(d.offsetHeight>40&&d.classList.contains('card')){CARD_H=d.offsetHeight;CARD_W=d.offsetWidth;break;}}}
 function planColumns(){chipIds=new Set();}
+function groupsOf(list){
+  const g=new Map();
+  list.forEach(s=>{const k=s.project||'기타';if(!g.has(k))g.set(k,[]);g.get(k).push(s);});
+  const arr=[...g.entries()].map(([name,items])=>{items.sort((a,b)=>(ORDER[a.state]-ORDER[b.state])||(a.startedAt-b.startedAt));return {name,items,rank:Math.min(...items.map(s=>ORDER[s.state]))};});
+  arr.sort((a,b)=>(a.rank-b.rank)||(b.items.length-a.items.length)||a.name.localeCompare(b.name));
+  return arr;
+}
+function headHTML(g){
+  const c={working:0,waiting:0,error:0,idle:0};g.items.forEach(s=>c[s.state]++);
+  const dots=['working','waiting','error','idle'].filter(k=>c[k]).map(k=>`<i style="--c:${COLH[k]}">${c[k]}</i>`).join('');
+  return `<b>${esc(g.name)}</b><span>${g.items.length}개 세션</span>${dots}`;
+}
+function syncHeads(groups){
+  const names=new Set(groups.map(g=>g.name));
+  for(const [k,el] of heads)if(!names.has(k)){el.remove();heads.delete(k);}
+  groups.forEach(g=>{let el=heads.get(g.name);if(!el){el=document.createElement('div');el.className='ghead';board.appendChild(el);heads.set(g.name,el);}
+    const html=headHTML(g);if(el._html!==html){el._html=html;el.innerHTML=html;}});
+}
 function layout(W,H){
-  const detOpen=sel>=0;const left=22,right=detOpen?W*.54-22:W-22,top=92,bottom=H-56;
-  measureCard();const availW=right-left;const cols=Math.max(1,Math.floor((availW+GAP)/(CARD_W+GAP)));
-  const order=SESS.slice().sort((a,b)=>(ORDER[a.state]-ORDER[b.state])||(a.startedAt-b.startedAt));
-  const rows=Math.ceil(order.length/cols);const gridW=cols*CARD_W+(cols-1)*GAP;
-  const fitH=rows*CARD_H+(rows-1)*GAP;const stepY=fitH>bottom-top&&rows>1?(bottom-top-CARD_H)/(rows-1):CARD_H+GAP;
-  const x0=left+(availW-gridW)/2+CARD_W/2;const y0=top+CARD_H/2+(fitH<=bottom-top?Math.max(0,(bottom-top-fitH)/2*0.6):0);
-  const out=new Map();
-  order.forEach((s,k)=>{const r=Math.floor(k/cols),c=k%cols;const n=Math.min(cols,order.length-r*cols);const off=(cols-n)*(CARD_W+GAP)/2;
-    out.set(s.id,{x:x0+c*(CARD_W+GAP)+off,y:y0+r*stepY});});
-  return {out};
+  // 그룹을 가로로 채워 넣고, 남은 칸이 모자라면 다음 줄로 넘긴다.
+  const detOpen=sel>=0;const left=22,right=detOpen?W*.54-22:W-22;const GX=36;
+  measureCard();const availW=right-left;const unit=CARD_W+GAP;
+  const groups=groupsOf(SESS);syncHeads(groups);
+  const widthOf=n=>n*CARD_W+(n-1)*GAP;
+  const maxCols=Math.max(1,Math.floor((availW+GAP)/unit));
+  const lines=[];let cur=[],curW=0;
+  groups.forEach(g=>{const n=Math.min(g.items.length,maxCols);const w=widthOf(n);
+    if(cur.length&&curW+GX+w>availW){lines.push({groups:cur,w:curW});cur=[];curW=0;}
+    cur.push({g,n,w});curW+=(cur.length>1?GX:0)+w;});
+  if(cur.length)lines.push({groups:cur,w:curW});
+  const out=new Map(),hpos=new Map();let y=12;
+  lines.forEach(line=>{let x=left+Math.max(0,(availW-line.w)/2);let lineH=0;
+    line.groups.forEach(({g,n,w})=>{hpos.set(g.name,{x,y});
+      g.items.forEach((s,k)=>{const r=Math.floor(k/n),c=k%n;out.set(s.id,{x:x+c*unit+CARD_W/2,y:y+HEAD_H+r*(CARD_H+GAP)+CARD_H/2});});
+      lineH=Math.max(lineH,HEAD_H+Math.ceil(g.items.length/n)*(CARD_H+GAP)-GAP);x+=w+GX;});
+    y+=lineH+GROUP_GAP;});
+  spacer.style.height=(y+20)+'px';
+  return {out,hpos};
 }
 
 /* ---------- render loop ---------- */
@@ -218,7 +255,8 @@ const start=performance.now();
 (function frame(){
   hov=hovId?SESS.findIndex(x=>x.id===hovId):-1;sel=selId?SESS.findIndex(x=>x.id===selId):-1;
   const W=stage.clientWidth,H=stage.clientHeight;
-  if(W){const {out}=layout(W,H);
+  if(W){const {out,hpos}=layout(W,H);
+    for(const [k,el] of heads){const p=hpos.get(k);if(p){el.style.left=p.x+'px';el.style.top=p.y+'px';el.style.opacity=sel>=0&&SESS[sel]&&SESS[sel].project!==k?.45:1;}}
     SESS.forEach((s,i)=>{const o=out.get(s.id);const d=cards.get(s.id);if(!o||!d)return;d.style.left=o.x+'px';d.style.top=o.y+'px';
       d.style.opacity=(sel>=0&&sel!==i)?.45:(s.state==='idle'?.75:1);});
   }
