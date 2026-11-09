@@ -1,0 +1,35 @@
+{
+  "ControlTower": {
+    "label": "ClaudeCodeMonitor"
+  },
+  "InvestmentProject": {
+    "label": "Investment Terminal"
+  },
+  "RealEstateMarket": {
+    "label": "실거래가 추천 지도"
+  },
+  "MyStock": {
+    "label": "MyStock"
+  },
+  "MyAccountBook": {
+    "label": "우리가계부"
+  },
+  "MyAssistant": {
+    "label": "덕배 (MyAssistant)"
+  },
+  "SwingScreener": {
+    "label": "SwingScreener"
+  },
+  "Jinkey": {
+    "label": "Jinkey LLM Wiki"
+  },
+  "DevManager": {
+    "label": "DevManager"
+  },
+  "voice": {
+    "label": "일한 자막 (JaKoSubtitles)"
+  },
+  "Tistory": {
+    "label": "Tistory"
+  }
+}
